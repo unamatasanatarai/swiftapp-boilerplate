@@ -21,16 +21,14 @@ fi
 IFS= read -r sdk_path <"$sdk_file"
 rm -f "$sdk_file"
 
-# Increment and track build number
-build_num_file="${project_dir}/BUILD_NUMBER"
-if [[ -f "$build_num_file" ]]; then
-    current_build="$(cat "$build_num_file")"
-    current_build="${current_build//[[:space:]]/}"
-    if [[ "$current_build" =~ ^[0-9]+$ ]]; then
-        build_number=$((current_build + 1))
-    else
-        build_number=1
-    fi
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    printf '%s\n' "Error: VERSION file must contain a version like 1.2.3 (found '${VERSION}')" >&2
+    exit 1
+fi
+
+# Every build increments BUILD_NUMBER; the file is the single source of truth.
+if [[ "$BUILD_NUMBER" =~ ^[0-9]+$ ]]; then
+    build_number=$((10#$BUILD_NUMBER + 1))
 else
     build_number=1
 fi
@@ -103,8 +101,19 @@ cat <<EOF >"${contents_dir}/Info.plist"
 </plist>
 EOF
 
-printf '%s\n' "Signing ${app_name} bundle..."
-codesign --force --deep --sign - --requirements "=designated => identifier \"${bundle_id}\"" "$app_dir"
+# macOS remembers granted permissions (TCC) against the app's designated requirement.
+# Ad-hoc signing defaults to a per-build cdhash requirement, which loses permissions on
+# every rebuild, so pin the requirement to the bundle ID instead. No keychain is used.
+designated_requirement="designated => identifier \"${bundle_id}\""
+
+printf '%s\n' "Signing ${app_name} bundle (ad-hoc, ${designated_requirement})..."
+codesign --force --deep --sign - --requirements "=${designated_requirement}" "$app_dir"
+
+signed_requirement="$(codesign -d -r- "$app_dir" 2>&1 | grep '^designated => ' || true)"
+if [[ "$signed_requirement" != "$designated_requirement" ]]; then
+    printf '%s\n' "Error: Unexpected designated requirement '${signed_requirement}'; permissions would not persist." >&2
+    exit 1
+fi
 
 printf '%s\n' "Refreshing macOS LaunchServices cache..."
 touch "$app_dir"

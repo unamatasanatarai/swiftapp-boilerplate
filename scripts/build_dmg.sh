@@ -17,9 +17,17 @@ dmg_name="${APP_NAME}-${VERSION}.dmg"
 dmg_path="${build_dir}/${dmg_name}"
 tmp_dmg="${build_dir}/tmp_rw.dmg"
 
-if [[ ! -d "$app_bundle" ]]; then
-    printf '%s\n' "Application bundle not found. Building ${APP_NAME}..."
-    "${script_dir}/build.sh"
+# Always rebuild so the packaged app matches the current VERSION file.
+"${script_dir}/build.sh"
+
+app_plist="${app_bundle}/Contents/Info.plist"
+icon_name="$(/usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$app_plist" 2>/dev/null || true)"
+icon_name="${icon_name:-AppIcon}"
+[[ "$icon_name" == *.icns ]] || icon_name="${icon_name}.icns"
+app_icon="${app_bundle}/Contents/Resources/${icon_name}"
+if [[ ! -f "$app_icon" ]]; then
+    printf '%s\n' "Error: App icon not found: ${app_icon}" >&2
+    exit 1
 fi
 
 # Detach any existing mounted volumes with this name
@@ -49,8 +57,10 @@ fi
 
 cp -R "$app_bundle" "${build_dir}/dmg_root/"
 ln -s /Applications "${build_dir}/dmg_root/Applications"
+# Included up front so the image is sized for it; reapplied after the Finder layout.
+cp "$app_icon" "${build_dir}/dmg_root/.VolumeIcon.icns"
 
-hdiutil create -volname "${APP_NAME}" -srcfolder "${build_dir}/dmg_root" -format UDRW -ov "$tmp_dmg" >/dev/null
+hdiutil create -volname "${APP_NAME}" -srcfolder "${build_dir}/dmg_root" -fs HFS+ -format UDRW -ov "$tmp_dmg" >/dev/null
 
 attach_file="${cache_dir}/hdiutil_attach.tmp"
 hdiutil attach -readwrite -noverify -noautoopen "$tmp_dmg" >"$attach_file" 2>/dev/null
@@ -92,10 +102,29 @@ tell application "Finder"
 end tell
 APPLESCRIPT
 
+# Use the app icon as the mounted volume icon. This must run after the Finder
+# layout step, which removes .VolumeIcon.icns and clears the custom icon flag.
+cp "$app_icon" "${mount_point}/.VolumeIcon.icns"
+SetFile -c icnC "${mount_point}/.VolumeIcon.icns" 2>/dev/null || true
+if ! SetFile -a C "$mount_point" 2>/dev/null; then
+    # Fallback without Xcode tools: set kHasCustomIcon in the Finder flags.
+    xattr -wx com.apple.FinderInfo \
+        "0000000000000000040000000000000000000000000000000000000000000000" "$mount_point"
+fi
+
 sync
 hdiutil detach "$mount_point" >/dev/null 2>&1 || hdiutil detach -force "$mount_point" >/dev/null 2>&1
 
 hdiutil convert "$tmp_dmg" -format UDZO -imagekey zlib-level=9 -ov -o "$dmg_path" >/dev/null
 rm -rf "${build_dir}/dmg_root" "$tmp_dmg"
+
+# Use the app icon for the .dmg file itself in Finder.
+osascript -l JavaScript - "$app_icon" "$dmg_path" <<'JXA' >/dev/null 2>&1 || true
+ObjC.import('AppKit');
+function run(argv) {
+    const icon = $.NSImage.alloc.initWithContentsOfFile(argv[0]);
+    return $.NSWorkspace.sharedWorkspace.setIconForFileOptions(icon, argv[1], 0);
+}
+JXA
 
 printf '%s\n' "✅ DMG created successfully: ${dmg_path}"
