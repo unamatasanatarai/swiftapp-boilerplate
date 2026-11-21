@@ -72,6 +72,10 @@ swift-boilerplate/
 │       ├── AppDelegate.swift         # NSApplicationDelegate lifecycle
 │       ├── AppConfig.swift           # App metadata and version resolution
 │       └── StatusBarController.swift # Menu bar status item & menu
+├── templates/
+│   ├── AppDelegate.both.swift        # Template: Dock icon, window & status bar item (default)
+│   ├── AppDelegate.dock.swift        # Template: Dock icon & window only
+│   └── AppDelegate.statusbar.swift   # Template: Menu bar status item only
 ├── Tests/
 │   └── AppTests/
 │       ├── AppTests.swift  # Minimal test suite
@@ -88,17 +92,23 @@ swift-boilerplate/
 ## Customizing
 
 Run `make setup` and enter your app ID (bundle identifier). The app name defaults to the last
-component of the ID. The values are written to [scripts/config.sh](scripts/config.sh), which you can
-also edit directly:
+component of the ID. You will also be prompted for the application UI mode (default is `both`):
+- `both`: Desktop window, Dock icon, and menu bar status item (`AppDelegate.both.swift`, default)
+- `statusbar`: Menu bar status item only (no Dock icon, `LSUIElement=true`, `AppDelegate.statusbar.swift`)
+- `dock`: Regular desktop application with window and Dock icon (`LSUIElement=false`, `AppDelegate.dock.swift`)
+
+When a choice is made, `setup.sh` replaces `Sources/App/AppDelegate.swift` from the corresponding template in `templates/` and updates [scripts/config.sh](scripts/config.sh). You can also edit them directly:
 
 ```bash
 export APP_NAME="MyApp"
 export BUNDLE_ID="com.example.MyApp"
-export LS_UI_ELEMENT="true" # Set to false if you want a regular Dock icon
+export APP_MODE="both" # Options: both, statusbar, dock
+export LS_UI_ELEMENT="false" # Set to true if you want a menu-bar-only app
 ```
 
 ## Build Rules
 
+- **Universal binary**: Builds for both Apple Silicon (`arm64`) and Intel (`x86_64`) by default, configured via `ARCHS` in `scripts/config.sh`.
 - **Version**: The app version is always the contents of the `VERSION` file (`X.Y.Z`). Every build
   writes it to `CFBundleShortVersionString`; environment overrides are ignored.
 - **Build number**: Every `make build` (including `make run`, `make dmg`, and `make release`)
@@ -130,3 +140,17 @@ make release 1.2.3
      and the list of actions. Nothing happens unless you type `yes`.
   3. **Do**: set `VERSION`, build the DMG, commit `VERSION` and `BUILD_NUMBER`, tag `vX.Y.Z`, push,
      and publish the GitHub release. If a step fails before the commit, `VERSION` is restored.
+
+### Releasing with `grel`
+
+The repository also includes a `.release.sh` hook for releasing via `grel`:
+
+```bash
+# Preview release actions without making changes
+grel 1.2.3 --notes "Initial release" --preview
+
+# Perform release with piped or inline release notes
+gemini-release-notes | grel 1.2.3
+grel 1.2.3 --notes "Release notes text"
+grel 1.2.3 -f release-notes.md
+```

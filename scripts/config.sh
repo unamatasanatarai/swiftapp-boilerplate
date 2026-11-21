@@ -6,9 +6,11 @@
 
 export APP_NAME="${APP_NAME:-SwiftApp}"
 export BUNDLE_ID="${BUNDLE_ID:-com.unamatasanatarai.SwiftApp}"
+export APP_MODE="${APP_MODE:-both}"
 export MIN_MACOS_VERSION="${MIN_MACOS_VERSION:-12.0}"
+export ARCHS="${ARCHS:-arm64 x86_64}" # Target architectures (default: Apple Silicon + Intel)
 export COPYRIGHT="${COPYRIGHT:-Copyright © $(date +%Y). All rights reserved.}"
-export LS_UI_ELEMENT="${LS_UI_ELEMENT:-true}" # Set to "true" for menu-bar-only / agent apps
+export LS_UI_ELEMENT="${LS_UI_ELEMENT:-false}"
 
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -17,8 +19,8 @@ project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 version_file="${project_root}/VERSION"
 VERSION=""
 if [[ -f "$version_file" ]]; then
-	VERSION="$(<"$version_file")"
-	VERSION="${VERSION//[[:space:]]/}"
+    VERSION="$(<"$version_file")"
+    VERSION="${VERSION//[[:space:]]/}"
 fi
 export VERSION="${VERSION:-0.0.0}"
 
@@ -26,7 +28,7 @@ export VERSION="${VERSION:-0.0.0}"
 build_num_file="${project_root}/BUILD_NUMBER"
 BUILD_NUMBER=""
 if [[ -f "$build_num_file" ]]; then
-	BUILD_NUMBER="$(<"$build_num_file")"
-	BUILD_NUMBER="${BUILD_NUMBER//[[:space:]]/}"
+    BUILD_NUMBER="$(<"$build_num_file")"
+    BUILD_NUMBER="${BUILD_NUMBER//[[:space:]]/}"
 fi
 export BUILD_NUMBER="${BUILD_NUMBER:-0}"

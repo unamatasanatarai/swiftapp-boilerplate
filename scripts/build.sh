@@ -59,13 +59,52 @@ while IFS= read -r file; do
     sources+=("$file")
 done < <(find Sources/App -type f -name "*.swift" | sort)
 
-printf '%s\n' "Compiling ${app_name} v${VERSION} (Build ${BUILD_NUMBER}) (${#sources[@]} source files)..."
-swiftc -sdk "$sdk_path" \
-    -O \
-    -whole-module-optimization \
-    -Xlinker -dead_strip \
-    "${sources[@]}" \
-    -o "${macos_dir}/${app_name}"
+normalize_arch() {
+    case "$1" in
+    intel | x86_64 | amd64) printf '%s\n' "x86_64" ;;
+    silicon | apple-silicon | arm64 | aarch64) printf '%s\n' "arm64" ;;
+    *) printf '%s\n' "$1" ;;
+    esac
+}
+
+arch_list=()
+for a in ${ARCHS:-arm64 x86_64}; do
+    arch_norm="$(normalize_arch "$a")"
+    if [[ ! " ${arch_list[*]:-} " =~ [[:space:]]${arch_norm}[[:space:]] ]]; then
+        arch_list+=("$arch_norm")
+    fi
+done
+
+[[ ${#arch_list[@]} -gt 0 ]] || arch_list=("arm64" "x86_64")
+
+printf '%s\n' "Compiling ${app_name} v${VERSION} (Build ${BUILD_NUMBER}) for ${arch_list[*]} (${#sources[@]} source files)..."
+if [[ ${#arch_list[@]} -eq 1 ]]; then
+    swiftc -sdk "$sdk_path" \
+        -target "${arch_list[0]}-apple-macos${MIN_MACOS_VERSION}" \
+        -O \
+        -whole-module-optimization \
+        -Xlinker -dead_strip \
+        "${sources[@]}" \
+        -o "${macos_dir}/${app_name}"
+else
+    tmp_build_dir="$(mktemp -d "${TMPDIR:-/tmp}/${app_name}_build.XXXXXX")"
+    trap 'rm -rf "$tmp_build_dir"' EXIT
+    slice_bins=()
+    for arch in "${arch_list[@]}"; do
+        slice_bin="${tmp_build_dir}/${app_name}_${arch}"
+        swiftc -sdk "$sdk_path" \
+            -target "${arch}-apple-macos${MIN_MACOS_VERSION}" \
+            -O \
+            -whole-module-optimization \
+            -Xlinker -dead_strip \
+            "${sources[@]}" \
+            -o "$slice_bin"
+        slice_bins+=("$slice_bin")
+    done
+    lipo -create "${slice_bins[@]}" -output "${macos_dir}/${app_name}"
+    rm -rf "$tmp_build_dir"
+    trap - EXIT
+fi
 
 printf '%s\n' "Generating ${app_name} Info.plist..."
 cat <<EOF >"${contents_dir}/Info.plist"
