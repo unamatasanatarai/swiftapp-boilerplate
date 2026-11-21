@@ -62,9 +62,9 @@ swift-boilerplate/
 ├── BUILD_NUMBER            # Auto-incrementing build counter
 ├── Resources/
 │   ├── AppIcon.icns        # Application icon (macOS icns)
-│   ├── AppIcon.png         # Generic black square with white "sa"
-│   ├── StatusBarIcon.png   # 18x18 status bar icon ("sa")
-│   ├── StatusBarIcon@2x.png# 36x36 retina status bar icon ("sa")
+│   ├── AppIcon.png         # Generic black square with white italic "st"
+│   ├── StatusBarIcon.png   # 18x18 status bar icon ("st")
+│   ├── StatusBarIcon@2x.png# 36x36 retina status bar icon ("st")
 │   └── dmg_background*.png # DMG distribution styling
 ├── Sources/
 │   └── App/

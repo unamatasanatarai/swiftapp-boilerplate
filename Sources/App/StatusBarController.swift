@@ -62,20 +62,22 @@ public final class StatusBarController: NSObject {
             let badgeRect = rect.insetBy(dx: 1, dy: 1)
             let path = NSBezierPath(roundedRect: badgeRect, xRadius: 3.5, yRadius: 3.5)
 
-            // Light mode: black background, white "sa" text
-            // Dark mode: white background, black "sa" text
+            // Light mode: black background, white "st" text
+            // Dark mode: white background, black "st" text
             let bgColor = isDark ? NSColor.white : NSColor.black
             let textColor = isDark ? NSColor.black : NSColor.white
 
             bgColor.setFill()
             path.fill()
 
-            let font = NSFont.systemFont(ofSize: 10, weight: .bold)
+            let baseFont = NSFont.systemFont(ofSize: 10, weight: .bold)
+            let italicDescriptor = baseFont.fontDescriptor.withSymbolicTraits([.bold, .italic])
+            let font = NSFont(descriptor: italicDescriptor, size: 10) ?? baseFont
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: font,
                 .foregroundColor: textColor
             ]
-            let str = NSAttributedString(string: "sa", attributes: attrs)
+            let str = NSAttributedString(string: "st", attributes: attrs)
             let strSize = str.size()
             let strRect = NSRect(
                 x: (rect.width - strSize.width) / 2,
