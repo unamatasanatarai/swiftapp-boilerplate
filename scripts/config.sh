@@ -8,7 +8,9 @@ export APP_NAME="${APP_NAME:-SwiftApp}"
 export BUNDLE_ID="${BUNDLE_ID:-com.unamatasanatarai.SwiftApp}"
 export APP_MODE="${APP_MODE:-both}"
 export MIN_MACOS_VERSION="${MIN_MACOS_VERSION:-12.0}"
-export ARCHS="${ARCHS:-arm64 x86_64}" # Target architectures (default: Apple Silicon + Intel)
+export ARCHS="${ARCHS:-host}"                         # Target architectures for dev ('host' compiles only current arch; or 'arm64 x86_64')
+export RELEASE_ARCHS="${RELEASE_ARCHS:-arm64 x86_64}" # Target architectures for release & DMG packaging
+export SIGNING_IDENTITY="${SIGNING_IDENTITY:--}"      # Code signing identity ('-' for ad-hoc, or 'Developer ID Application: ...')
 export COPYRIGHT="${COPYRIGHT:-Copyright © $(date +%Y). All rights reserved.}"
 export LS_UI_ELEMENT="${LS_UI_ELEMENT:-false}"
 

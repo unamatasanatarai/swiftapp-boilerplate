@@ -59,52 +59,101 @@ while IFS= read -r file; do
     sources+=("$file")
 done < <(find Sources/App -type f -name "*.swift" | sort)
 
+host_arch() {
+    case "$(uname -m)" in
+    arm64 | aarch64) printf '%s\n' "arm64" ;;
+    *) printf '%s\n' "x86_64" ;;
+    esac
+}
+
 normalize_arch() {
     case "$1" in
     intel | x86_64 | amd64) printf '%s\n' "x86_64" ;;
     silicon | apple-silicon | arm64 | aarch64) printf '%s\n' "arm64" ;;
+    host | current | native) host_arch ;;
     *) printf '%s\n' "$1" ;;
     esac
 }
 
 arch_list=()
-for a in ${ARCHS:-arm64 x86_64}; do
+for a in ${ARCHS:-host}; do
     arch_norm="$(normalize_arch "$a")"
     if [[ ! " ${arch_list[*]:-} " =~ [[:space:]]${arch_norm}[[:space:]] ]]; then
         arch_list+=("$arch_norm")
     fi
 done
 
-[[ ${#arch_list[@]} -gt 0 ]] || arch_list=("arm64" "x86_64")
+[[ ${#arch_list[@]} -gt 0 ]] || arch_list=("$(host_arch)")
 
-printf '%s\n' "Compiling ${app_name} v${VERSION} (Build ${BUILD_NUMBER}) for ${arch_list[*]} (${#sources[@]} source files)..."
+if [[ "${DEBUG:-0}" == "1" || "${CONFIGURATION:-}" == "debug" ]]; then
+    swiftc_flags=(
+        -Onone
+        -DDEBUG
+    )
+    build_mode="debug"
+else
+    swiftc_flags=(
+        -Osize
+        -whole-module-optimization
+        -lto=llvm-thin
+        -Xlinker -dead_strip
+        -Xlinker -x
+    )
+    build_mode="release"
+fi
+
+printf '%s\n' "Compiling ${app_name} v${VERSION} (Build ${BUILD_NUMBER}) [${build_mode}] for ${arch_list[*]} (${#sources[@]} source files)..."
 if [[ ${#arch_list[@]} -eq 1 ]]; then
     swiftc -sdk "$sdk_path" \
         -target "${arch_list[0]}-apple-macos${MIN_MACOS_VERSION}" \
-        -O \
-        -whole-module-optimization \
-        -Xlinker -dead_strip \
+        "${swiftc_flags[@]}" \
         "${sources[@]}" \
         -o "${macos_dir}/${app_name}"
 else
     tmp_build_dir="$(mktemp -d "${TMPDIR:-/tmp}/${app_name}_build.XXXXXX")"
     trap 'rm -rf "$tmp_build_dir"' EXIT
     slice_bins=()
+    pids=()
     for arch in "${arch_list[@]}"; do
         slice_bin="${tmp_build_dir}/${app_name}_${arch}"
+        slice_bins+=("$slice_bin")
         swiftc -sdk "$sdk_path" \
             -target "${arch}-apple-macos${MIN_MACOS_VERSION}" \
-            -O \
-            -whole-module-optimization \
-            -Xlinker -dead_strip \
+            "${swiftc_flags[@]}" \
             "${sources[@]}" \
-            -o "$slice_bin"
-        slice_bins+=("$slice_bin")
+            -o "$slice_bin" &
+        pids+=($!)
     done
+    compile_err=0
+    for pid in "${pids[@]}"; do
+        wait "$pid" || compile_err=$?
+    done
+    if [[ "$compile_err" -ne 0 ]]; then
+        printf '%s\n' "Error: Compilation failed for one or more architecture slices" >&2
+        exit "$compile_err"
+    fi
     lipo -create "${slice_bins[@]}" -output "${macos_dir}/${app_name}"
     rm -rf "$tmp_build_dir"
     trap - EXIT
 fi
+
+xml_escape() {
+    local s="$1"
+    shopt -u patsub_replacement 2>/dev/null || true
+    s="${s//&/&amp;}"
+    s="${s//</&lt;}"
+    s="${s//>/&gt;}"
+    s="${s//\"/&quot;}"
+    s="${s//\'/&apos;}"
+    printf '%s' "$s"
+}
+
+app_name_xml="$(xml_escape "$app_name")"
+bundle_id_xml="$(xml_escape "$bundle_id")"
+version_xml="$(xml_escape "$VERSION")"
+build_number_xml="$(xml_escape "$BUILD_NUMBER")"
+min_macos_xml="$(xml_escape "$MIN_MACOS_VERSION")"
+copyright_xml="$(xml_escape "$COPYRIGHT")"
 
 printf '%s\n' "Generating ${app_name} Info.plist..."
 cat <<EOF >"${contents_dir}/Info.plist"
@@ -113,51 +162,63 @@ cat <<EOF >"${contents_dir}/Info.plist"
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>${app_name}</string>
+    <string>${app_name_xml}</string>
     <key>CFBundleIdentifier</key>
-    <string>${bundle_id}</string>
+    <string>${bundle_id_xml}</string>
     <key>CFBundleName</key>
-    <string>${app_name}</string>
+    <string>${app_name_xml}</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>${VERSION}</string>
+    <string>${version_xml}</string>
     <key>CFBundleVersion</key>
-    <string>${BUILD_NUMBER}</string>
+    <string>${build_number_xml}</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon.icns</string>
     <key>CFBundleIconName</key>
     <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>
-    <string>${MIN_MACOS_VERSION}</string>
+    <string>${min_macos_xml}</string>
     <key>LSUIElement</key>
     <${LS_UI_ELEMENT}/>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSHumanReadableCopyright</key>
-    <string>${COPYRIGHT}</string>
+    <string>${copyright_xml}</string>
 </dict>
 </plist>
 EOF
 
 # macOS remembers granted permissions (TCC) against the app's designated requirement.
-# Ad-hoc signing defaults to a per-build cdhash requirement, which loses permissions on
-# every rebuild, so pin the requirement to the bundle ID instead. No keychain is used.
-designated_requirement="designated => identifier \"${bundle_id}\""
+# When ad-hoc signing, pin the requirement to the bundle ID for local development persistence.
+# Hardened runtime (--options runtime) is enforced to prevent DYLD library injection.
+signing_identity="${SIGNING_IDENTITY:--}"
+sign_args=(--force --deep --options runtime --sign "$signing_identity")
 
-printf '%s\n' "Signing ${app_name} bundle (ad-hoc, ${designated_requirement})..."
-codesign --force --deep --sign - --requirements "=${designated_requirement}" "$app_dir"
-
-signed_requirement="$(codesign -d -r- "$app_dir" 2>&1 | grep '^designated => ' || true)"
-if [[ "$signed_requirement" != "$designated_requirement" ]]; then
-    printf '%s\n' "Error: Unexpected designated requirement '${signed_requirement}'; permissions would not persist." >&2
-    exit 1
+if [[ "$signing_identity" == "-" ]]; then
+    designated_requirement="designated => identifier \"${bundle_id}\""
+    sign_args+=(--requirements "=${designated_requirement}")
+    printf '%s\n' "Signing ${app_name} bundle (ad-hoc hardened, ${designated_requirement})..."
+else
+    printf '%s\n' "Signing ${app_name} bundle (identity: ${signing_identity}, hardened runtime)..."
 fi
 
-printf '%s\n' "Refreshing macOS LaunchServices cache..."
-touch "$app_dir"
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f -R "$app_dir" >/dev/null 2>&1 || true
-qlmanage -r cache >/dev/null 2>&1 || true
+codesign "${sign_args[@]}" "$app_dir"
+
+if [[ "$signing_identity" == "-" ]]; then
+    signed_requirement="$(codesign -d -r- "$app_dir" 2>&1 | grep '^designated => ' || true)"
+    if [[ "$signed_requirement" != "$designated_requirement" ]]; then
+        printf '%s\n' "Error: Unexpected designated requirement '${signed_requirement}'; permissions would not persist." >&2
+        exit 1
+    fi
+fi
+
+if [[ "${DEBUG:-0}" != "1" && "${FAST_BUILD:-0}" != "1" ]]; then
+    printf '%s\n' "Refreshing macOS LaunchServices cache..."
+    touch "$app_dir"
+    /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f -R "$app_dir" >/dev/null 2>&1 || true
+    qlmanage -r cache >/dev/null 2>&1 || true
+fi
 
 printf '%s\n' "✅ Build complete:"
 printf '%s\n' "   - ${app_dir}"

@@ -1,81 +1,37 @@
 import Cocoa
 
 public final class StatusBarController: NSObject {
-    private var statusItem: NSStatusItem!
+    private var statusItem: NSStatusItem?
     private var menu: NSMenu!
-    private var appearanceObservation: NSKeyValueObservation?
 
-    public override init() {
-        super.init()
-        setupStatusItem()
-        setupMenu()
-        setupAppearanceObserver()
-    }
+    /// Callback invoked when user selects "Open Window"
+    public var onOpenWindow: (() -> Void)?
 
-    public var currentMenu: NSMenu {
-        return menu
-    }
+    /// Callback invoked when user selects "Quit"
+    public var onQuitRequested: (() -> Void)?
 
-    public var currentStatusItem: NSStatusItem {
-        return statusItem
-    }
-
-    private func setupStatusItem() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        if let button = statusItem.button {
-            button.toolTip = "\(AppConfig.appName) — Running"
-        }
-        updateIcon()
-    }
-
-    private func setupAppearanceObserver() {
-        // Observe application appearance changes
-        appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
-            DispatchQueue.main.async {
-                self?.updateIcon()
-            }
-        }
-
-        // Also observe system-wide theme changes (Light/Dark mode toggle)
-        DistributedNotificationCenter.default().addObserver(
-            forName: NSNotification.Name("AppleInterfaceThemeChangedNotification"),
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.updateIcon()
-        }
-    }
-
-    public func updateIcon() {
-        guard let button = statusItem.button else { return }
-
-        // Determine effective appearance from button / system
-        let appearance = button.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) ?? NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua])
-        let isDark = (appearance == .darkAqua)
-
-        button.image = Self.renderBadgeIcon(isDark: isDark)
-    }
-
-    public static func renderBadgeIcon(isDark: Bool) -> NSImage {
+    // Pre-rendered template badge icon initialized once.
+    // Using isTemplate = true delegates tinting to macOS WindowServer GPU compositor,
+    // eliminating appearance observation, KVO overhead, and dynamic drawing churn.
+    private static let badgeIcon: NSImage = {
         let size = NSSize(width: 18, height: 18)
         let image = NSImage(size: size, flipped: false) { rect in
+            guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
+
             let badgeRect = rect.insetBy(dx: 1, dy: 1)
             let path = NSBezierPath(roundedRect: badgeRect, xRadius: 3.5, yRadius: 3.5)
-
-            // Light mode: black background, white "st" text
-            // Dark mode: white background, black "st" text
-            let bgColor = isDark ? NSColor.white : NSColor.black
-            let textColor = isDark ? NSColor.black : NSColor.white
-
-            bgColor.setFill()
+            NSColor.black.setFill()
             path.fill()
 
+            // Knock out "st" text using clear blend mode for monochrome template mask
+            ctx.saveGState()
+            ctx.setBlendMode(.clear)
             let baseFont = NSFont.systemFont(ofSize: 10, weight: .bold)
             let italicDescriptor = baseFont.fontDescriptor.withSymbolicTraits([.bold, .italic])
             let font = NSFont(descriptor: italicDescriptor, size: 10) ?? baseFont
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: font,
-                .foregroundColor: textColor
+                .foregroundColor: NSColor.black
             ]
             let str = NSAttributedString(string: "st", attributes: attrs)
             let strSize = str.size()
@@ -86,14 +42,47 @@ public final class StatusBarController: NSObject {
                 height: strSize.height
             )
             str.draw(in: strRect)
+            ctx.restoreGState()
             return true
         }
-        // Explicitly set isTemplate = false so macOS does not monochrome tint it
-        image.isTemplate = false
+        image.isTemplate = true
         return image
+    }()
+
+    public override init() {
+        super.init()
+        setupStatusItem()
+        setupMenu()
     }
 
-    private func setupMenu() {
+    public var currentMenu: NSMenu {
+        return menu
+    }
+
+    public var currentStatusItem: NSStatusItem? {
+        return statusItem
+    }
+
+    private func setupStatusItem() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        if let button = item.button {
+            button.toolTip = "\(AppConfig.appName) — Running"
+            button.image = Self.badgeIcon
+        }
+        self.statusItem = item
+    }
+
+    public func updateIcon() {
+        // Template image is automatically tinted by WindowServer; no dynamic redrawing needed.
+        statusItem?.button?.image = Self.badgeIcon
+    }
+
+    public static func renderBadgeIcon(isDark: Bool) -> NSImage {
+        // Maintained for backward compatibility
+        return badgeIcon
+    }
+
+    public func setupMenu() {
         menu = NSMenu()
 
         let appItem = NSMenuItem(
@@ -106,6 +95,17 @@ public final class StatusBarController: NSObject {
 
         menu.addItem(NSMenuItem.separator())
 
+        if onOpenWindow != nil {
+            let openWindowItem = NSMenuItem(
+                title: "Open Window",
+                action: #selector(openWindowAction),
+                keyEquivalent: "o"
+            )
+            openWindowItem.target = self
+            menu.addItem(openWindowItem)
+            menu.addItem(NSMenuItem.separator())
+        }
+
         let quitItem = NSMenuItem(
             title: "Quit \(AppConfig.appName)",
             action: #selector(quitAction),
@@ -115,10 +115,31 @@ public final class StatusBarController: NSObject {
         quitItem.target = self
         menu.addItem(quitItem)
 
-        statusItem.menu = menu
+        statusItem?.menu = menu
+    }
+
+    public func refreshMenu() {
+        setupMenu()
+    }
+
+    public func cleanup() {
+        if let item = statusItem {
+            NSStatusBar.system.removeStatusItem(item)
+            statusItem = nil
+        }
+    }
+
+    @objc private func openWindowAction() {
+        onOpenWindow?()
     }
 
     @objc private func quitAction() {
-        NSApp.terminate(nil)
+        if let onQuit = onQuitRequested {
+            onQuit()
+        } else {
+            cleanup()
+            NSApp.terminate(nil)
+            exit(0)
+        }
     }
 }

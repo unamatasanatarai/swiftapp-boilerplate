@@ -20,6 +20,10 @@ setup:
 build:
 	@./scripts/build.sh
 
+## debug: Fast single-architecture debug build (-Onone)
+debug:
+	@DEBUG=1 ./scripts/build.sh
+
 ## run: Kill running app, rebuild, and launch application
 run: kill build
 	@echo "==> Launching $(APP_NAME).app..."
