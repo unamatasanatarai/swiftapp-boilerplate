@@ -6,6 +6,7 @@ struct AppMain {
     private static var appDelegate: AppDelegate?
 
     static func main() {
+        ProcessInfo.processInfo.processName = AppConfig.appName
         let app = NSApplication.shared
         autoreleasepool {
             let delegate = AppDelegate()

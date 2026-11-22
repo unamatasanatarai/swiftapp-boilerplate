@@ -5,6 +5,7 @@
 # Run `make setup` to set the app name and bundle ID, or modify this file directly.
 
 export APP_NAME="${APP_NAME:-SwiftApp}"
+export APP_DISPLAY_NAME="${APP_DISPLAY_NAME:-Swift App}"
 export BUNDLE_ID="${BUNDLE_ID:-com.unamatasanatarai.SwiftApp}"
 export APP_MODE="${APP_MODE:-both}"
 export MIN_MACOS_VERSION="${MIN_MACOS_VERSION:-12.0}"

@@ -7,6 +7,7 @@ project_dir="$(cd "${script_dir}/.." && pwd)"
 cd "$project_dir"
 
 source "${script_dir}/config.sh"
+app_display_name="${APP_DISPLAY_NAME:-$APP_NAME}"
 
 build_dir="build"
 target_version=""
@@ -260,7 +261,7 @@ system_prompt_file="${tmp_dir}/system_prompt.txt"
 user_prompt_file="${tmp_dir}/user_prompt.txt"
 
 cat >"$system_prompt_file" <<EOF
-You write concise, factual, high-quality software release notes for ${APP_NAME} v${version}.
+You write concise, factual, high-quality software release notes for ${app_display_name} v${version}.
 
 Guidelines:
 - Explain meaningful changes and their user-facing or technical impact.
@@ -376,7 +377,7 @@ section() {
 
 printf '\n'
 rule
-printf 'Release preview: %s v%s\n' "$APP_NAME" "$version"
+printf 'Release preview: %s v%s\n' "$app_display_name" "$version"
 rule
 printf 'Previous release: %s\n' "${previous_tag:-"(none)"}"
 printf 'Current version:  %s\n' "$current_version"
@@ -429,7 +430,7 @@ info "Building release DMG..."
     die "Expected DMG artifact was not created: ${dmg_path}"
 
 built_version="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
-    "${build_dir}/${APP_NAME}.app/Contents/Info.plist")"
+    "${build_dir}/${app_display_name}.app/Contents/Info.plist")"
 [[ "$built_version" == "$version" ]] ||
     die "Built app reports version ${built_version}, expected ${version}."
 
@@ -443,7 +444,7 @@ git show-ref --verify --quiet "refs/tags/v${version}" &&
     die "Tag v${version} appeared during the release; refusing to overwrite."
 
 info "Creating annotated tag v${version}..."
-git tag -a "v${version}" -m "Release ${APP_NAME} v${version}"
+git tag -a "v${version}" -m "Release ${app_display_name} v${version}"
 
 info "Pushing branch ${current_branch}..."
 git push origin "$current_branch"
@@ -455,7 +456,7 @@ if [[ "$publish_github" == true ]]; then
     info "Publishing GitHub release v${version}..."
 
     gh release create "v${version}" "$dmg_path" \
-        --title "${APP_NAME} v${version}" \
+        --title "${app_display_name} v${version}" \
         --notes-file "$release_notes_file"
 else
     printf '%s\n' \

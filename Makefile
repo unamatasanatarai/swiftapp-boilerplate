@@ -2,8 +2,9 @@
 .PHONY: help setup build run kill test dmg release revoke clean
 
 APP_NAME  ?= $(shell bash -c 'source ./scripts/config.sh && echo "$$APP_NAME"')
+APP_DISPLAY_NAME ?= $(shell bash -c 'source ./scripts/config.sh && echo "$${APP_DISPLAY_NAME:-$$APP_NAME}"')
 BUNDLE_ID ?= $(shell bash -c 'source ./scripts/config.sh && echo "$$BUNDLE_ID"')
-APP_BUNDLE := build/$(APP_NAME).app
+APP_BUNDLE := build/$(APP_DISPLAY_NAME).app
 
 ## help: Display this help message
 help:
@@ -26,13 +27,15 @@ debug:
 
 ## run: Kill running app, rebuild, and launch application
 run: kill build
-	@echo "==> Launching $(APP_NAME).app..."
+	@echo "==> Launching $(APP_DISPLAY_NAME).app..."
 	@open "$(APP_BUNDLE)"
 
 ## kill: Terminate running application instances
 kill:
 	@echo "==> Terminating running $(APP_NAME) instances..."
 	@pkill -x "$(APP_NAME)" 2>/dev/null || true
+	@pkill -x "$(APP_DISPLAY_NAME)" 2>/dev/null || true
+	@pkill -f "$(APP_BUNDLE)" 2>/dev/null || true
 	@sleep 0.2
 
 ## test: Run native Swift unit test suite

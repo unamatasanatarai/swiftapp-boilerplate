@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-# Interactive project setup: asks for the app ID (bundle identifier) and app name,
-# and writes them to scripts/config.sh.
+# Interactive project setup: asks for the app ID (bundle identifier), app name,
+# app display name, and UI mode, and writes them to scripts/config.sh.
 #
 # Usage:
-#   ./scripts/setup.sh [bundle-id] [app-name] [app-mode]
+#   ./scripts/setup.sh [bundle-id] [app-name] [app-display-name] [app-mode]
 
 set -euo pipefail
 
@@ -16,9 +16,10 @@ config_file="${script_dir}/config.sh"
 build_num_file="${project_dir}/BUILD_NUMBER"
 
 # Read the configured values, not environment overrides.
-unset APP_NAME BUNDLE_ID APP_MODE LS_UI_ELEMENT
+unset APP_NAME APP_DISPLAY_NAME BUNDLE_ID APP_MODE LS_UI_ELEMENT
 source "$config_file"
 current_app_name="$APP_NAME"
+current_app_display_name="${APP_DISPLAY_NAME:-$current_app_name}"
 current_bundle_id="$BUNDLE_ID"
 current_app_mode="${APP_MODE:-both}"
 
@@ -49,11 +50,43 @@ if [[ "$bundle_id" == "$current_bundle_id" ]]; then
 else
     default_app_name="${bundle_id##*.}"
 fi
-app_name="${2:-$(ask "App name" "$default_app_name")}"
-[[ "$app_name" =~ ^[A-Za-z][A-Za-z0-9_-]*$ ]] ||
-    die "Invalid app name '${app_name}'. Use letters, digits, '-' or '_', starting with a letter."
+raw_app_name="${2:-$(ask "App name (executable/target, e.g. MyApp)" "$default_app_name")}"
+raw_app_name="$(printf '%s' "$raw_app_name" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+app_name="${raw_app_name//[[:space:]]/}"
 
-app_mode="${3:-}"
+[[ "$app_name" =~ ^[A-Za-z][A-Za-z0-9_-]*$ ]] ||
+    die "Invalid app name '${raw_app_name}'. Use letters, digits, spaces, '-' or '_', starting with a letter."
+
+if [[ "$raw_app_name" =~ [[:space:]] ]]; then
+    default_display_name="$raw_app_name"
+elif [[ "$bundle_id" == "$current_bundle_id" && -n "$current_app_display_name" ]]; then
+    default_display_name="$current_app_display_name"
+else
+    default_display_name="$app_name"
+fi
+
+arg3="${3:-}"
+arg4="${4:-}"
+app_mode=""
+
+if [[ -n "$arg3" ]]; then
+    case "${arg3,,}" in
+    1 | 2 | 3 | both | all | statusbar | statusbar-only | status | menubar | dock | dock-only | regular | window)
+        app_display_name="$default_display_name"
+        app_mode="$arg3"
+        ;;
+    *)
+        app_display_name="$arg3"
+        app_mode="$arg4"
+        ;;
+    esac
+else
+    app_display_name="$(ask "App display name (shown in Finder, Dock, Cmd+Tab)" "$default_display_name")"
+fi
+
+app_display_name="$(printf '%s' "$app_display_name" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+[[ -n "$app_display_name" ]] || app_display_name="$app_name"
+
 if [[ -z "$app_mode" ]]; then
     if [[ ! -t 0 ]]; then
         app_mode="$current_app_mode"
@@ -90,6 +123,7 @@ trap 'rm -f "$tmp_config"' EXIT
 while IFS= read -r line || [[ -n "$line" ]]; do
     case "$line" in
     'export APP_NAME='*) line="export APP_NAME=\"\${APP_NAME:-${app_name}}\"" ;;
+    'export APP_DISPLAY_NAME='*) line="export APP_DISPLAY_NAME=\"\${APP_DISPLAY_NAME:-${app_display_name}}\"" ;;
     'export BUNDLE_ID='*) line="export BUNDLE_ID=\"\${BUNDLE_ID:-${bundle_id}}\"" ;;
     'export APP_MODE='*) line="export APP_MODE=\"\${APP_MODE:-${app_mode}}\"" ;;
     'export LS_UI_ELEMENT='*) line="export LS_UI_ELEMENT=\"\${LS_UI_ELEMENT:-${ls_ui_element}}\"" ;;
@@ -112,7 +146,7 @@ fi
 # Reset build number to zero.
 printf '%s\n' "0" >"$build_num_file"
 
-printf '%s\n' "Configured ${app_name} (${bundle_id}) as ${app_mode} in scripts/config.sh and AppDelegate.swift."
+printf '%s\n' "Configured ${app_display_name} (${app_name}, ${bundle_id}) as ${app_mode} in scripts/config.sh and AppDelegate.swift."
 
 if [[ "$bundle_id" != "$current_bundle_id" ]]; then
     printf '%s\n' "Note: Permissions granted to ${current_bundle_id} do not carry over to the new app ID."

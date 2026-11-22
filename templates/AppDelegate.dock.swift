@@ -33,10 +33,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         let mainMenu = NSMenu()
 
         // Application Menu
-        let appMenuItem = NSMenuItem()
+        let appMenuItem = NSMenuItem(title: AppConfig.appName, action: nil, keyEquivalent: "")
         mainMenu.addItem(appMenuItem)
 
-        let appMenu = NSMenu()
+        let appMenu = NSMenu(title: AppConfig.appName)
         appMenu.addItem(withTitle: "About \(AppConfig.appName)", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
 

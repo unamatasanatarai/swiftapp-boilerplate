@@ -37,11 +37,16 @@ export BUILD_NUMBER="$build_number"
 
 build_dir="build"
 app_name="${APP_NAME}"
+app_display_name="${APP_DISPLAY_NAME:-$app_name}"
 bundle_id="${BUNDLE_ID}"
-app_dir="${build_dir}/${app_name}.app"
+app_dir="${build_dir}/${app_display_name}.app"
 contents_dir="${app_dir}/Contents"
 macos_dir="${contents_dir}/MacOS"
 resources_dir="${contents_dir}/Resources"
+
+if [[ "$app_name" != "$app_display_name" && -d "${build_dir}/${app_name}.app" ]]; then
+    rm -rf "${build_dir}/${app_name}.app"
+fi
 
 mkdir -p "$macos_dir" "$resources_dir"
 
@@ -149,6 +154,7 @@ xml_escape() {
 }
 
 app_name_xml="$(xml_escape "$app_name")"
+app_display_name_xml="$(xml_escape "$app_display_name")"
 bundle_id_xml="$(xml_escape "$bundle_id")"
 version_xml="$(xml_escape "$VERSION")"
 build_number_xml="$(xml_escape "$BUILD_NUMBER")"
@@ -156,6 +162,12 @@ min_macos_xml="$(xml_escape "$MIN_MACOS_VERSION")"
 copyright_xml="$(xml_escape "$COPYRIGHT")"
 
 printf '%s\n' "Generating ${app_name} Info.plist..."
+lproj_dir="${resources_dir}/en.lproj"
+mkdir -p "$lproj_dir"
+cat <<EOF >"${lproj_dir}/InfoPlist.strings"
+"CFBundleDisplayName" = "${app_display_name}";
+"CFBundleName" = "${app_display_name}";
+EOF
 cat <<EOF >"${contents_dir}/Info.plist"
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -166,7 +178,13 @@ cat <<EOF >"${contents_dir}/Info.plist"
     <key>CFBundleIdentifier</key>
     <string>${bundle_id_xml}</string>
     <key>CFBundleName</key>
-    <string>${app_name_xml}</string>
+    <string>${app_display_name_xml}</string>
+    <key>CFBundleDisplayName</key>
+    <string>${app_display_name_xml}</string>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>LSHasLocalizedDisplayName</key>
+    <true/>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

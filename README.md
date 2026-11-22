@@ -91,8 +91,9 @@ swift-boilerplate/
 
 ## Customizing
 
-Run `make setup` and enter your app ID (bundle identifier). The app name defaults to the last
-component of the ID. You will also be prompted for the application UI mode (default is `both`):
+Run `make setup` and enter your app ID (bundle identifier), app name, and app display name.
+The app name defaults to the last component of the ID, and the display name (which supports spaces)
+defaults to the app name (or previously configured display name). You will also be prompted for the application UI mode (default is `both`):
 - `both`: Desktop window, Dock icon, and menu bar status item (`AppDelegate.both.swift`, default)
 - `statusbar`: Menu bar status item only (no Dock icon, `LSUIElement=true`, `AppDelegate.statusbar.swift`)
 - `dock`: Regular desktop application with window and Dock icon (`LSUIElement=false`, `AppDelegate.dock.swift`)
@@ -101,6 +102,7 @@ When a choice is made, `setup.sh` replaces `Sources/App/AppDelegate.swift` from 
 
 ```bash
 export APP_NAME="MyApp"
+export APP_DISPLAY_NAME="My App" # Display name shown in Finder / Dock (supports spaces)
 export BUNDLE_ID="com.example.MyApp"
 export APP_MODE="both" # Options: both, statusbar, dock
 export LS_UI_ELEMENT="false" # Set to true if you want a menu-bar-only app
